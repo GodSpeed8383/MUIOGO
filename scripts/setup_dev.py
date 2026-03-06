@@ -61,6 +61,13 @@ _CBC_WINDOWS_URL = (
     f"Cbc-releases.{_CBC_WINDOWS_VERSION}-w64-msvc17-md.zip"
 )
 _CBC_WINDOWS_SHA256 = "6acf3e300945b815b2cbb2b16d3732eeeec968a4962249167827062bbf83b3a3"
+_GLPK_WINDOWS_VERSION = "4.65"
+_GLPK_WINDOWS_URL = (
+    "https://sourceforge.net/projects/winglpk/files/winglpk/"
+    f"GLPK-{_GLPK_WINDOWS_VERSION}/winglpk-{_GLPK_WINDOWS_VERSION}.zip/download"
+)
+# Upstream-published SHA-1 from SourceForge for download integrity verification.
+_GLPK_WINDOWS_SHA1 = "c232374bd706e39fdbe5cc4a7c38116e819daafa"
 
 # Core packages that must be importable after setup
 REQUIRED_IMPORTS = [
@@ -198,6 +205,14 @@ def _resolve_venv_dir(venv_dir_arg: str | None) -> Path:
 
 def _sha256(path: Path) -> str:
     hasher = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _sha1(path: Path) -> str:
+    hasher = hashlib.sha1()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             hasher.update(chunk)
@@ -466,6 +481,67 @@ def _install_cbc_windows_manual() -> bool:
                 pass
 
 
+def _install_glpk_windows_manual() -> bool:
+    """
+    Fallback: download pre-built GLPK Windows binaries from SourceForge, verify
+    the upstream-published SHA-1 checksum, extract, and add to user PATH.
+
+    This is only used when Chocolatey is unavailable or ``choco install glpk``
+    fails.  The preferred installation path remains ``choco install glpk``.
+    """
+    install_dir = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "glpk"
+    tmp_path: Path | None = None
+
+    try:
+        _print_warn("Attempting manual GLPK installation...")
+        install_dir.mkdir(parents=True, exist_ok=True)
+
+        fd, tmp_str = tempfile.mkstemp(suffix=".zip")
+        os.close(fd)
+        tmp_path = Path(tmp_str)
+
+        print(f"  Downloading GLPK {_GLPK_WINDOWS_VERSION} from SourceForge ...")
+        req = urllib.request.Request(_GLPK_WINDOWS_URL, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=120) as response:
+            with open(tmp_path, "wb") as f:
+                f.write(response.read())
+
+        print("  Verifying GLPK archive checksum ...")
+        actual_sha = _sha1(tmp_path)
+        if actual_sha.lower() != _GLPK_WINDOWS_SHA1.lower():
+            _print_fail(
+                "GLPK download checksum mismatch — aborting installation",
+                f"expected {_GLPK_WINDOWS_SHA1}, got {actual_sha}",
+            )
+            return False
+        _print_pass("GLPK archive checksum verified", actual_sha)
+
+        print("  Extracting GLPK ...")
+        with zipfile.ZipFile(tmp_path, "r") as zf:
+            _safe_extract_zip(zf, install_dir)
+
+        matches = list(install_dir.rglob("glpsol.exe"))
+        if not matches:
+            _print_fail("glpsol.exe not found in extracted archive")
+            return False
+        bin_dir = matches[0].parent
+
+        _windows_add_to_user_path(bin_dir)
+        _print_pass("GLPK installed", str(bin_dir))
+        return True
+
+    except Exception as exc:
+        _print_fail("GLPK manual install failed", str(exc))
+        return False
+
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Step 1 – Python virtual environment
 # ──────────────────────────────────────────────────────────────────────────────
@@ -606,19 +682,19 @@ def install_solvers() -> bool:
                 "Homebrew not found",
                 "Install from https://brew.sh then re-run this script.",
             )
-            return False
+            success = False
+        else:
+            if not glpk_ok:
+                r = _run(["brew", "install", "glpk"], capture_output=True, text=True)
+                if r.returncode != 0:
+                    _print_fail("brew install glpk", r.stderr.strip())
+                    success = False
 
-        if not glpk_ok:
-            r = _run(["brew", "install", "glpk"], capture_output=True, text=True)
-            if r.returncode != 0:
-                _print_fail("brew install glpk", r.stderr.strip())
-                success = False
-
-        if not cbc_ok:
-            r = _run(["brew", "install", "cbc"], capture_output=True, text=True)
-            if r.returncode != 0:
-                _print_fail("brew install cbc", r.stderr.strip())
-                success = False
+            if not cbc_ok:
+                r = _run(["brew", "install", "cbc"], capture_output=True, text=True)
+                if r.returncode != 0:
+                    _print_fail("brew install cbc", r.stderr.strip())
+                    success = False
 
     # ── Linux ─────────────────────────────────────────────────────────────
     elif SYSTEM == "Linux":
@@ -628,22 +704,22 @@ def install_solvers() -> bool:
                 "No supported package manager found (apt, dnf, pacman)",
                 "Install GLPK and CBC manually, then re-run with --check.",
             )
-            return False
+            success = False
+        else:
+            mgr_name, glpk_cmd, cbc_cmd = pkg
+            print(f"  Detected package manager: {mgr_name}")
 
-        mgr_name, glpk_cmd, cbc_cmd = pkg
-        print(f"  Detected package manager: {mgr_name}")
+            if not glpk_ok:
+                r = _run(glpk_cmd, capture_output=True, text=True)
+                if r.returncode != 0:
+                    _print_fail(" ".join(glpk_cmd), r.stderr.strip())
+                    success = False
 
-        if not glpk_ok:
-            r = _run(glpk_cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                _print_fail(" ".join(glpk_cmd), r.stderr.strip())
-                success = False
-
-        if not cbc_ok:
-            r = _run(cbc_cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                _print_fail(" ".join(cbc_cmd), r.stderr.strip())
-                success = False
+            if not cbc_ok:
+                r = _run(cbc_cmd, capture_output=True, text=True)
+                if r.returncode != 0:
+                    _print_fail(" ".join(cbc_cmd), r.stderr.strip())
+                    success = False
 
     # ── Windows ───────────────────────────────────────────────────────────
     elif SYSTEM == "Windows":
@@ -651,22 +727,22 @@ def install_solvers() -> bool:
             if not _is_admin():
                 _print_warn(
                     "Not running as Administrator",
-                    "choco installs may fail; CBC will use manual fallback if needed.",
+                    "choco installs may fail; solvers will use manual fallback if needed.",
                 )
 
             if not glpk_ok:
                 r = _run(["choco", "install", "glpk", "-y"],
                          capture_output=True, text=True)
                 if r.returncode != 0:
-                    _print_fail("choco install glpk", r.stderr.strip())
-                    success = False
+                    _print_warn("choco install glpk failed, using manual fallback")
+                    if not _install_glpk_windows_manual():
+                        success = False
 
             if not cbc_ok:
                 r = _run(["choco", "install", "coinor-cbc", "-y"],
                          capture_output=True, text=True)
                 if r.returncode != 0:
                     _print_warn("coinor-cbc not available via Chocolatey, using manual fallback")
-
                     if not _install_cbc_windows_manual():
                         success = False
 
@@ -674,55 +750,91 @@ def install_solvers() -> bool:
             _print_warn("winget detected but GLPK/CBC not available via winget.")
 
             if not glpk_ok:
-                success = False
+                if not _install_glpk_windows_manual():
+                    success = False
 
             if not cbc_ok:
                 if not _install_cbc_windows_manual():
                     success = False
 
         else:
-            _print_warn(
-                "No supported package manager (choco/winget) found on Windows",
-                "Install Chocolatey (https://chocolatey.org/) or install GLPK manually.",
-            )
+            _print_warn("No supported package manager (choco/winget) found on Windows.")
 
             if not glpk_ok:
-                success = False
+                if not _install_glpk_windows_manual():
+                    success = False
 
             if not cbc_ok:
                 if not _install_cbc_windows_manual():
                     success = False
 
-    if success:
-        print(f"  {GREEN}Solver dependencies installed.{RESET}")
+    # ── Report per-solver status ─────────────────────────────────────────
+    glpk_ok = _which("glpsol") is not None
+    cbc_ok = _which("cbc") is not None
+
+    if glpk_ok:
+        _print_pass("GLPK (glpsol) available")
     else:
-        _print_warn("Some solvers could not be installed automatically.")
+        _print_fail("GLPK (glpsol) not available")
+        success = False
+
+    if cbc_ok:
+        _print_pass("CBC available")
+    else:
+        _print_fail("CBC not available")
+        success = False
+
+    if success:
+        print(f"\n  {GREEN}Solver dependencies installed.{RESET}")
+    else:
         _print_solver_manual_instructions()
 
     return success
 
 
 def _print_solver_manual_instructions() -> None:
-    """Print manual installation instructions for solvers."""
-    print(textwrap.dedent(f"""
-    {YELLOW}Manual solver installation:{RESET}
+    """Print targeted manual installation instructions for missing solvers."""
+    glpk_missing = _which("glpsol") is None
+    cbc_missing = _which("cbc") is None
 
-    GLPK:
-      macOS:   brew install glpk
-      Ubuntu:  sudo apt-get install -y glpk-utils
-      Fedora:  sudo dnf install -y glpk-utils
-      Arch:    sudo pacman -S glpk
-      Windows: choco install glpk
-               or download from https://www.gnu.org/software/glpk/
+    if not glpk_missing and not cbc_missing:
+        return
 
-    CBC (COIN-OR):
-      macOS:   brew install cbc
-      Ubuntu:  sudo apt-get install -y coinor-cbc
-      Fedora:  sudo dnf install -y coin-or-Cbc
-      Arch:    sudo pacman -S coin-or-cbc
-      Windows: choco install coinor-cbc
-               or download from https://github.com/coin-or/Cbc/releases
-    """))
+    print(f"\n  {YELLOW}Manual solver installation:{RESET}\n")
+
+    if SYSTEM == "Windows":
+        print("  The easiest way to install solvers on Windows is via Chocolatey.")
+        print("  Install Chocolatey: https://chocolatey.org/install")
+        print()
+        if glpk_missing:
+            print("  GLPK:")
+            print("    choco install glpk")
+            print("    or download from https://sourceforge.net/projects/winglpk/")
+            print()
+        if cbc_missing:
+            print("  CBC (COIN-OR):")
+            print("    choco install coinor-cbc")
+            print("    or download from https://github.com/coin-or/Cbc/releases")
+            print()
+    elif SYSTEM == "Darwin":
+        if glpk_missing:
+            print("  GLPK:  brew install glpk")
+        if cbc_missing:
+            print("  CBC:   brew install cbc")
+        print()
+    else:
+        if glpk_missing:
+            print("  GLPK:")
+            print("    Ubuntu:  sudo apt-get install -y glpk-utils")
+            print("    Fedora:  sudo dnf install -y glpk-utils")
+            print("    Arch:    sudo pacman -S glpk")
+            print()
+        if cbc_missing:
+            print("  CBC (COIN-OR):")
+            print("    Ubuntu:  sudo apt-get install -y coinor-cbc")
+            print("    Fedora:  sudo dnf install -y coin-or-Cbc")
+            print("    Arch:    sudo pacman -S coin-or-cbc")
+            print()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
