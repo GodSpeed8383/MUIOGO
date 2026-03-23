@@ -120,7 +120,6 @@ export default class Home {
         $("#cases").on('click.homeCopy', '.copyCS', function(e){
             e.stopImmediatePropagation();
             var casename = $(this).attr('data-ps');
-            var copiedCaseName = casename + '_copy';
             if (casename !== model.casename) {
                 Message.bigBoxWarning('Copy message',
                     'Select <b>' + casename + '</b> first to copy it.', 4000);
@@ -129,6 +128,7 @@ export default class Home {
             Base.copyCaseStudy(casename)
             .then(response => {
                 Message.clearMessages();
+                var copiedCaseName = response.casename || (casename + '_copy');
                 if(response.status_code=="success"){
                     Message.bigBoxSuccess('Copy message', response.message, 3000);
                     //REFRESH

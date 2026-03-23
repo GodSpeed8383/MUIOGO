@@ -86,7 +86,8 @@ def copy():
         if(os.path.isdir(dest)):
             response = {
                 "message": 'Model <b>'+ case + '_copy</b> already exists, please rename existing model first!',
-                "status_code": "warning"
+                "status_code": "warning",
+                "casename": case_copy
             }
         else:
             shutil.copytree(str(src), str(dest) )
@@ -96,7 +97,8 @@ def copy():
             File.writeFile(genData, casePath)
             response = {
                 "message": 'Model <b>'+ case + '</b> copied!',
-                "status_code": "success"
+                "status_code": "success",
+                "casename": case_copy
             }
         return jsonify(response), 200
     except(IOError):
