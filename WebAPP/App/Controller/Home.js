@@ -120,6 +120,7 @@ export default class Home {
         $("#cases").on('click.homeCopy', '.copyCS', function(e){
             e.stopImmediatePropagation();
             var casename = $(this).attr('data-ps');
+            var copiedCaseName = casename + '_copy';
             if (casename !== model.casename) {
                 Message.bigBoxWarning('Copy message',
                     'Select <b>' + casename + '</b> first to copy it.', 4000);
@@ -131,12 +132,12 @@ export default class Home {
                 if(response.status_code=="success"){
                     Message.bigBoxSuccess('Copy message', response.message, 3000);
                     //REFRESH
-                    Html.apendModel(casename+'_copy');
-                    Html.appendCasePicker(casename+'_copy', null)
+                    Html.apendModel(copiedCaseName);
+                    Html.appendCasePicker(copiedCaseName, null)
                     if (Base.AWS_SYNC == 1){
-                        SyncS3.deleteResultsPreSync(casename)
+                        SyncS3.deleteResultsPreSync(copiedCaseName)
                         .then(response =>{
-                            SyncS3.uploadSync(casename+'_copy');
+                            SyncS3.uploadSync(copiedCaseName);
                         });  
                     }
                 }

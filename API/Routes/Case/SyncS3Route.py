@@ -14,8 +14,10 @@ def deleteResultsPreSync():
         
         resPath = Path(Config.DATA_STORAGE, case, 'res')
         dataPath = Path(Config.DATA_STORAGE, case, 'data.txt')
-        shutil.rmtree(resPath)
-        os.remove(dataPath)
+        if resPath.exists():
+            shutil.rmtree(resPath)
+        if dataPath.exists():
+            os.remove(dataPath)
 
         response = {
             "message": 'Case <b>'+ case + '</b> deleted!',
