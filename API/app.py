@@ -66,15 +66,18 @@ app.register_blueprint(syncs3_api)
 
 CORS(app)
 
+def get_allowed_origin():
+    configured_origin = os.environ.get("MUIOGO_ALLOWED_ORIGIN", "").strip()
+    if configured_origin:
+        return configured_origin
+    if Config.HEROKU_DEPLOY == 0:
+        return "http://127.0.0.1"
+    return "https://osemosys.herokuapp.com"
+
 #potrebno kad je front end na drugom serveru 127.0.0.1
 @app.after_request
 def add_headers(response):
-    if Config.HEROKU_DEPLOY == 0: 
-        #localhost
-        response.headers.add('Access-Control-Allow-Origin', 'http://127.0.0.1')
-    else:
-        #HEROKU
-        response.headers.add('Access-Control-Allow-Origin', 'https://osemosys.herokuapp.com/')
+    response.headers['Access-Control-Allow-Origin'] = get_allowed_origin()
     response.headers.add('Access-Control-Allow-Credentials', 'true')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
     #response.headers['Content-Type'] = 'application/javascript'
@@ -160,5 +163,6 @@ if __name__ == '__main__':
         #HEROKU
         host = '0.0.0.0'
         print_startup_info(host, port, 'flask-dev')
-        app.run(host=host, port=port, debug=True)
+        flask_debug = os.environ.get("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes"}
+        app.run(host=host, port=port, debug=flask_debug)
         #app.run(host='127.0.0.1', port=port, debug=True)
