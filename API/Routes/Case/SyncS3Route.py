@@ -75,7 +75,7 @@ def updateSync():
         s3.updateSync(localDir, case, Config.S3_BUCKET)
 
         response = {
-            "message": 'Case <b>'+ case + '</b> deleted!',
+            "message": 'Case <b>'+ case + '</b> updated!',
             "status_code": "success"
         }
         return jsonify(response), 200
@@ -95,7 +95,7 @@ def updateSyncParamFile():
         s3.updateSync(localDir, case, Config.S3_BUCKET)
 
         response = {
-            "message": 'Case <b>'+ case + '</b> deleted!',
+            "message": 'Case <b>'+ case + '</b> updated!',
             "status_code": "success"
         }
         return jsonify(response), 200
