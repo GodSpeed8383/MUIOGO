@@ -74,7 +74,7 @@ export default class Home {
         
         $("#cases").tooltip({ selector: '[data-toggle=tooltip]' });
 
-        $("#casePicker, #cases").off('click', '.selectCS');
+        $("#casePicker, #cases").off('click.homeSelect', '.selectCS');
         $("#casePicker, #cases").on('click.homeSelect', '.selectCS', function(e) {
             //console.log('model ', model)
         //$(document).delegate(".selectCS","click",function(e){
@@ -115,8 +115,7 @@ export default class Home {
         });
 
         //copy case
-        $(document).off('click', '.copyCS');
-        $("#cases").off('click', '.copyCS');
+        $("#cases").off('click.homeCopy', '.copyCS');
         $("#cases").on('click.homeCopy', '.copyCS', function(e){
             e.stopImmediatePropagation();
             var casename = $(this).attr('data-ps');
@@ -164,8 +163,7 @@ export default class Home {
         });
 
         //delete case
-        $(document).off('click', '.deleteModel');
-        $("#cases").off('click', '.deleteModel');
+        $("#cases").off('click.homeDelete', '.deleteModel');
         $("#cases").on('click.homeDelete', '.deleteModel', function(e){
             var casename = $(this).attr('data-ps');
             if (casename !== model.casename) {
