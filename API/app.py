@@ -117,12 +117,15 @@ def getSession():
 @app.route("/setSession", methods=['POST'])
 def setSession():
     try:
-        cs = request.json['case']
+        payload = request.get_json(silent=True) or {}
+        cs = payload['case']
         if cs is None:
             session.pop('osycase', None)
             return jsonify({"osycase": None}), 200
 
-        from pathlib import Path
+        if not isinstance(cs, str) or not cs.strip():
+            return jsonify({'message': 'Case must be a non-empty string.', 'status_code': 'error'}), 400
+
         if not Path(Config.DATA_STORAGE, cs).is_dir():
             return jsonify({'message': 'Case not found.', 'status_code': 'error'}), 404
         session['osycase'] = cs
